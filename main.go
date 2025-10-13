@@ -1,7 +1,6 @@
 package hashgo
 
 import (
-	"context"
 	"fmt"
 	"hash/crc32"
 	"sort"
@@ -106,12 +105,6 @@ func (hr *HashRing) getNode(key string) (string, error) {
 	return hr.HashToNode[hr.Ring[index]], nil
 }
 
-// GetNodeIP returns the IP address of the node responsible for the given key
-func (hr *HashRing) GetNodeIP(key string) (string, error) {
-	// Since node name is now the IP, we can return it directly
-	return hr.getNode(key)
-}
-
 // GetNodes returns all nodes in the ring
 func (hr *HashRing) GetNodes() []string {
 	hr.RLock()
@@ -122,23 +115,23 @@ func (hr *HashRing) GetNodes() []string {
 	return result
 }
 
-// GetNodeForRequest returns the node responsible for the given gRPC request
-func (hr *HashRing) GetNodeForRequest(ctx context.Context, key string) (string, error) {
+// GetNodeForRequest returns the node
+func (hr *HashRing) GetNode(key string) (string, error) {
 	return hr.getNode(key)
 }
 
-// AddNodeForRequest adds a new node for the given gRPC request
-func (hr *HashRing) AddNodeForRequest(ctx context.Context, ip string) error {
-	if ip == "" {
-		return fmt.Errorf("IP address cannot be empty")
+// AddNodeForRequest adds a new node
+func (hr *HashRing) AddNodeForRequest(node string) error {
+	if node == "" {
+		return fmt.Errorf("node cannot be empty")
 	}
-	hr.addNode(ip)
+	hr.addNode(node)
 	return nil
 }
 
-// RemoveNodeForRequest removes a node for the given gRPC request
-func (hr *HashRing) RemoveNodeForRequest(ctx context.Context, ip string) error {
-	hr.removeNode(ip)
+// RemoveNodeForRequest removes a node
+func (hr *HashRing) RemoveNodeForRequest(node string) error {
+	hr.removeNode(node)
 	return nil
 }
 
@@ -150,22 +143,6 @@ func (hr *HashRing) AssignSubscriptionToNode(subscriptionName string) (string, e
 	}
 
 	return ip, nil
-}
-
-// GetSubscriptionNode returns which node handles a given subscription
-func (hr *HashRing) GetSubscriptionNode(subscriptionName string) (string, error) {
-	return hr.getNode(subscriptionName)
-}
-
-// GetSubscriptionNodeWithIP returns the node and IP for a subscription
-func (hr *HashRing) GetSubscriptionNodeWithIP(subscriptionName string) (node, ip string, err error) {
-	nodeIP, err := hr.getNode(subscriptionName)
-	if err != nil {
-		return "", "", err
-	}
-
-	// Since node name is the IP, return the same value for both
-	return nodeIP, nodeIP, nil
 }
 
 // AssignMultipleSubscriptions assigns multiple subscriptions and returns a map
