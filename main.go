@@ -159,3 +159,65 @@ func (hr *HashRing) RemoveNodeForRequest(ctx context.Context, node string) error
 	hr.removeNode(node)
 	return nil
 }
+
+// AssignSubscriptionToNode assigns a subscription to a node based on consistent hashing
+func (hr *HashRing) AssignSubscriptionToNode(subscriptionName string) (string, string, error) {
+	node, err := hr.getNode(subscriptionName)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to assign subscription %s: %w", subscriptionName, err)
+	}
+
+	hr.RLock()
+	ip := hr.nodeToIP[node]
+	hr.RUnlock()
+
+	return node, ip, nil
+}
+
+// GetSubscriptionNode returns which node handles a given subscription
+func (hr *HashRing) GetSubscriptionNode(subscriptionName string) (string, error) {
+	return hr.getNode(subscriptionName)
+}
+
+// GetSubscriptionNodeWithIP returns the node and IP for a subscription
+func (hr *HashRing) GetSubscriptionNodeWithIP(subscriptionName string) (node, ip string, err error) {
+	node, err = hr.getNode(subscriptionName)
+	if err != nil {
+		return "", "", err
+	}
+
+	hr.RLock()
+	ip = hr.nodeToIP[node]
+	hr.RUnlock()
+
+	return node, ip, nil
+}
+
+// AssignMultipleSubscriptions assigns multiple subscriptions and returns a map
+func (hr *HashRing) AssignMultipleSubscriptions(subscriptions []string) (map[string]string, error) {
+	assignments := make(map[string]string)
+
+	for _, sub := range subscriptions {
+		node, err := hr.getNode(sub)
+		if err != nil {
+			return nil, fmt.Errorf("failed to assign subscription %s: %w", sub, err)
+		}
+		assignments[sub] = node
+	}
+
+	return assignments, nil
+}
+
+// GetNodeSubscriptions returns all subscriptions assigned to a specific node
+func (hr *HashRing) GetNodeSubscriptions(nodeName string, allSubscriptions []string) []string {
+	var nodeSubscriptions []string
+
+	for _, sub := range allSubscriptions {
+		node, err := hr.getNode(sub)
+		if err == nil && node == nodeName {
+			nodeSubscriptions = append(nodeSubscriptions, sub)
+		}
+	}
+
+	return nodeSubscriptions
+}
