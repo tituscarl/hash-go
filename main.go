@@ -115,13 +115,13 @@ func (hr *HashRing) GetNodes() []string {
 	return result
 }
 
-// GetNodeForRequest returns the node
+// GetNodeForRequest returns the node for the given request key
 func (hr *HashRing) GetNode(key string) (string, error) {
 	return hr.getNode(key)
 }
 
-// AddNodeForRequest adds a new node
-func (hr *HashRing) AddNodeForRequest(node string) error {
+// AddNode adds a new node to the hash ring
+func (hr *HashRing) AddNode(node string) error {
 	if node == "" {
 		return fmt.Errorf("node cannot be empty")
 	}
@@ -129,8 +129,8 @@ func (hr *HashRing) AddNodeForRequest(node string) error {
 	return nil
 }
 
-// RemoveNodeForRequest removes a node
-func (hr *HashRing) RemoveNodeForRequest(node string) error {
+// RemoveNode removes a node from the hash ring
+func (hr *HashRing) RemoveNode(node string) error {
 	hr.removeNode(node)
 	return nil
 }
