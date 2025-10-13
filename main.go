@@ -13,7 +13,6 @@ func NewHashRing(virtualNodes int) *HashRing {
 		virtualNodes = 150 // default virtual nodes
 	}
 	return &HashRing{
-		nodeToIP:     make(map[string]string),
 		nodeToHash:   make(map[string]uint32),
 		virtualNodes: virtualNodes,
 		hashToNode:   make(map[uint32]string),
@@ -22,28 +21,27 @@ func NewHashRing(virtualNodes int) *HashRing {
 }
 
 // AddNode adds a new node to the hash ring with virtual nodes
-func (hr *HashRing) addNode(node string, ip string) {
+func (hr *HashRing) addNode(ip string) {
 	hr.Lock()
 	defer hr.Unlock()
 
-	if _, ok := hr.nodeToIP[node]; ok {
+	if _, ok := hr.nodeToHash[ip]; ok {
 		return // Node already exists
 	}
 
-	hr.nodeToIP[node] = ip
-	hr.nodes = append(hr.nodes, node)
+	hr.nodes = append(hr.nodes, ip)
 	sort.Strings(hr.nodes)
 
 	// Add virtual nodes for better distribution
 	for i := 0; i < hr.virtualNodes; i++ {
-		virtualKey := fmt.Sprintf("%s#%d", node, i)
+		virtualKey := fmt.Sprintf("%s#%d", ip, i)
 		hash := crc32.ChecksumIEEE([]byte(virtualKey))
 		hr.ring = append(hr.ring, hash)
-		hr.hashToNode[hash] = node
+		hr.hashToNode[hash] = ip
 
 		// Store the first hash as the node's primary hash
 		if i == 0 {
-			hr.nodeToHash[node] = hash
+			hr.nodeToHash[ip] = hash
 		}
 	}
 
@@ -54,21 +52,20 @@ func (hr *HashRing) addNode(node string, ip string) {
 }
 
 // RemoveNode removes a node from the hash ring
-func (hr *HashRing) removeNode(node string) {
+func (hr *HashRing) removeNode(ip string) {
 	hr.Lock()
 	defer hr.Unlock()
 
-	if _, ok := hr.nodeToIP[node]; !ok {
+	if _, ok := hr.nodeToHash[ip]; !ok {
 		return // Node does not exist
 	}
 
-	delete(hr.nodeToIP, node)
-	delete(hr.nodeToHash, node)
+	delete(hr.nodeToHash, ip)
 
 	// Remove virtual nodes from ring
 	newRing := make([]uint32, 0, len(hr.ring))
 	for _, hash := range hr.ring {
-		if hr.hashToNode[hash] != node {
+		if hr.hashToNode[hash] != ip {
 			newRing = append(newRing, hash)
 		} else {
 			delete(hr.hashToNode, hash)
@@ -78,7 +75,7 @@ func (hr *HashRing) removeNode(node string) {
 
 	// Remove the node from the slice
 	for i := 0; i < len(hr.nodes); i++ {
-		if hr.nodes[i] == node {
+		if hr.nodes[i] == ip {
 			hr.nodes = append(hr.nodes[:i], hr.nodes[i+1:]...)
 			break // Only one match possible
 		}
@@ -111,20 +108,8 @@ func (hr *HashRing) getNode(key string) (string, error) {
 
 // GetNodeIP returns the IP address of the node responsible for the given key
 func (hr *HashRing) GetNodeIP(key string) (string, error) {
-	node, err := hr.getNode(key)
-	if err != nil {
-		return "", err
-	}
-
-	hr.RLock()
-	defer hr.RUnlock()
-
-	ip, ok := hr.nodeToIP[node]
-	if !ok {
-		return "", fmt.Errorf("IP not found for node: %s", node)
-	}
-
-	return ip, nil
+	// Since node name is now the IP, we can return it directly
+	return hr.getNode(key)
 }
 
 // GetNodes returns all nodes in the ring
@@ -143,35 +128,28 @@ func (hr *HashRing) GetNodeForRequest(ctx context.Context, key string) (string, 
 }
 
 // AddNodeForRequest adds a new node for the given gRPC request
-func (hr *HashRing) AddNodeForRequest(ctx context.Context, node, ip string) error {
-	if node == "" {
-		return fmt.Errorf("node name cannot be empty")
-	}
+func (hr *HashRing) AddNodeForRequest(ctx context.Context, ip string) error {
 	if ip == "" {
 		return fmt.Errorf("IP address cannot be empty")
 	}
-	hr.addNode(node, ip)
+	hr.addNode(ip)
 	return nil
 }
 
 // RemoveNodeForRequest removes a node for the given gRPC request
-func (hr *HashRing) RemoveNodeForRequest(ctx context.Context, node string) error {
-	hr.removeNode(node)
+func (hr *HashRing) RemoveNodeForRequest(ctx context.Context, ip string) error {
+	hr.removeNode(ip)
 	return nil
 }
 
 // AssignSubscriptionToNode assigns a subscription to a node based on consistent hashing
-func (hr *HashRing) AssignSubscriptionToNode(subscriptionName string) (string, string, error) {
-	node, err := hr.getNode(subscriptionName)
+func (hr *HashRing) AssignSubscriptionToNode(subscriptionName string) (string, error) {
+	ip, err := hr.getNode(subscriptionName)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to assign subscription %s: %w", subscriptionName, err)
+		return "", fmt.Errorf("failed to assign subscription %s: %w", subscriptionName, err)
 	}
 
-	hr.RLock()
-	ip := hr.nodeToIP[node]
-	hr.RUnlock()
-
-	return node, ip, nil
+	return ip, nil
 }
 
 // GetSubscriptionNode returns which node handles a given subscription
@@ -181,16 +159,13 @@ func (hr *HashRing) GetSubscriptionNode(subscriptionName string) (string, error)
 
 // GetSubscriptionNodeWithIP returns the node and IP for a subscription
 func (hr *HashRing) GetSubscriptionNodeWithIP(subscriptionName string) (node, ip string, err error) {
-	node, err = hr.getNode(subscriptionName)
+	nodeIP, err := hr.getNode(subscriptionName)
 	if err != nil {
 		return "", "", err
 	}
 
-	hr.RLock()
-	ip = hr.nodeToIP[node]
-	hr.RUnlock()
-
-	return node, ip, nil
+	// Since node name is the IP, return the same value for both
+	return nodeIP, nodeIP, nil
 }
 
 // AssignMultipleSubscriptions assigns multiple subscriptions and returns a map
@@ -198,23 +173,23 @@ func (hr *HashRing) AssignMultipleSubscriptions(subscriptions []string) (map[str
 	assignments := make(map[string]string)
 
 	for _, sub := range subscriptions {
-		node, err := hr.getNode(sub)
+		ip, err := hr.getNode(sub)
 		if err != nil {
 			return nil, fmt.Errorf("failed to assign subscription %s: %w", sub, err)
 		}
-		assignments[sub] = node
+		assignments[sub] = ip
 	}
 
 	return assignments, nil
 }
 
 // GetNodeSubscriptions returns all subscriptions assigned to a specific node
-func (hr *HashRing) GetNodeSubscriptions(nodeName string, allSubscriptions []string) []string {
+func (hr *HashRing) GetNodeSubscriptions(nodeIP string, allSubscriptions []string) []string {
 	var nodeSubscriptions []string
 
 	for _, sub := range allSubscriptions {
-		node, err := hr.getNode(sub)
-		if err == nil && node == nodeName {
+		ip, err := hr.getNode(sub)
+		if err == nil && ip == nodeIP {
 			nodeSubscriptions = append(nodeSubscriptions, sub)
 		}
 	}
