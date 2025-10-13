@@ -13,10 +13,10 @@ func NewHashRing(virtualNodes int) *HashRing {
 		virtualNodes = 150 // default virtual nodes
 	}
 	return &HashRing{
-		nodeToHash:   make(map[string]uint32),
-		virtualNodes: virtualNodes,
-		hashToNode:   make(map[uint32]string),
-		ring:         []uint32{},
+		NodeToHash:   make(map[string]uint32),
+		VirtualNodes: virtualNodes,
+		HashToNode:   make(map[uint32]string),
+		Ring:         []uint32{},
 	}
 }
 
@@ -25,29 +25,29 @@ func (hr *HashRing) addNode(ip string) {
 	hr.Lock()
 	defer hr.Unlock()
 
-	if _, ok := hr.nodeToHash[ip]; ok {
+	if _, ok := hr.NodeToHash[ip]; ok {
 		return // Node already exists
 	}
 
-	hr.nodes = append(hr.nodes, ip)
-	sort.Strings(hr.nodes)
+	hr.Nodes = append(hr.Nodes, ip)
+	sort.Strings(hr.Nodes)
 
 	// Add virtual nodes for better distribution
-	for i := 0; i < hr.virtualNodes; i++ {
+	for i := 0; i < hr.VirtualNodes; i++ {
 		virtualKey := fmt.Sprintf("%s#%d", ip, i)
 		hash := crc32.ChecksumIEEE([]byte(virtualKey))
-		hr.ring = append(hr.ring, hash)
-		hr.hashToNode[hash] = ip
+		hr.Ring = append(hr.Ring, hash)
+		hr.HashToNode[hash] = ip
 
 		// Store the first hash as the node's primary hash
 		if i == 0 {
-			hr.nodeToHash[ip] = hash
+			hr.NodeToHash[ip] = hash
 		}
 	}
 
 	// Sort the ring after adding virtual nodes
-	sort.Slice(hr.ring, func(i, j int) bool {
-		return hr.ring[i] < hr.ring[j]
+	sort.Slice(hr.Ring, func(i, j int) bool {
+		return hr.Ring[i] < hr.Ring[j]
 	})
 }
 
@@ -56,27 +56,27 @@ func (hr *HashRing) removeNode(ip string) {
 	hr.Lock()
 	defer hr.Unlock()
 
-	if _, ok := hr.nodeToHash[ip]; !ok {
+	if _, ok := hr.NodeToHash[ip]; !ok {
 		return // Node does not exist
 	}
 
-	delete(hr.nodeToHash, ip)
+	delete(hr.NodeToHash, ip)
 
 	// Remove virtual nodes from ring
-	newRing := make([]uint32, 0, len(hr.ring))
-	for _, hash := range hr.ring {
-		if hr.hashToNode[hash] != ip {
+	newRing := make([]uint32, 0, len(hr.Ring))
+	for _, hash := range hr.Ring {
+		if hr.HashToNode[hash] != ip {
 			newRing = append(newRing, hash)
 		} else {
-			delete(hr.hashToNode, hash)
+			delete(hr.HashToNode, hash)
 		}
 	}
-	hr.ring = newRing
+	hr.Ring = newRing
 
 	// Remove the node from the slice
-	for i := 0; i < len(hr.nodes); i++ {
-		if hr.nodes[i] == ip {
-			hr.nodes = append(hr.nodes[:i], hr.nodes[i+1:]...)
+	for i := 0; i < len(hr.Nodes); i++ {
+		if hr.Nodes[i] == ip {
+			hr.Nodes = append(hr.Nodes[:i], hr.Nodes[i+1:]...)
 			break // Only one match possible
 		}
 	}
@@ -87,23 +87,23 @@ func (hr *HashRing) getNode(key string) (string, error) {
 	hr.RLock()
 	defer hr.RUnlock()
 
-	if len(hr.ring) == 0 {
+	if len(hr.Ring) == 0 {
 		return "", fmt.Errorf("hash ring is empty")
 	}
 
 	hash := crc32.ChecksumIEEE([]byte(key))
 
 	// Binary search for the first node with hash >= key hash
-	index := sort.Search(len(hr.ring), func(i int) bool {
-		return hr.ring[i] >= hash
+	index := sort.Search(len(hr.Ring), func(i int) bool {
+		return hr.Ring[i] >= hash
 	})
 
 	// Wrap around if needed
-	if index == len(hr.ring) {
+	if index == len(hr.Ring) {
 		index = 0
 	}
 
-	return hr.hashToNode[hr.ring[index]], nil
+	return hr.HashToNode[hr.Ring[index]], nil
 }
 
 // GetNodeIP returns the IP address of the node responsible for the given key
@@ -117,8 +117,8 @@ func (hr *HashRing) GetNodes() []string {
 	hr.RLock()
 	defer hr.RUnlock()
 
-	result := make([]string, len(hr.nodes))
-	copy(result, hr.nodes)
+	result := make([]string, len(hr.Nodes))
+	copy(result, hr.Nodes)
 	return result
 }
 
