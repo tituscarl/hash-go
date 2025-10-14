@@ -173,3 +173,14 @@ func (hr *HashRing) GetNodeSubscriptions(nodeIP string, allSubscriptions []strin
 
 	return nodeSubscriptions
 }
+
+// Reset clears all nodes and data from the hash ring
+func (hr *HashRing) Reset() {
+	hr.Lock()
+	defer hr.Unlock()
+
+	hr.Nodes = []string{}
+	hr.NodeToHash = make(map[string]uint32)
+	hr.HashToNode = make(map[uint32]string)
+	hr.Ring = []uint32{}
+}
