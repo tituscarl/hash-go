@@ -1,0 +1,1 @@
+A very simple implementation of consistent hashing using hash ring in Go
