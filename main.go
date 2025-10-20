@@ -2,8 +2,9 @@ package hashgo
 
 import (
 	"fmt"
-	"hash/crc32"
 	"sort"
+
+	"github.com/cespare/xxhash"
 )
 
 // NewHashRing creates a new hash ring with virtual nodes for better distribution
@@ -12,10 +13,10 @@ func NewHashRing(virtualNodes int) *HashRing {
 		virtualNodes = 150 // default virtual nodes
 	}
 	return &HashRing{
-		NodeToHash:   make(map[string]uint32),
+		NodeToHash:   make(map[string]uint64),
 		VirtualNodes: virtualNodes,
-		HashToNode:   make(map[uint32]string),
-		Ring:         []uint32{},
+		HashToNode:   make(map[uint64]string),
+		Ring:         []uint64{},
 	}
 }
 
@@ -34,7 +35,7 @@ func (hr *HashRing) addNode(ip string) {
 	// Add virtual nodes for better distribution
 	for i := 0; i < hr.VirtualNodes; i++ {
 		virtualKey := fmt.Sprintf("%s#%d", ip, i)
-		hash := crc32.ChecksumIEEE([]byte(virtualKey))
+		hash := hasher().sum64([]byte(virtualKey))
 		hr.Ring = append(hr.Ring, hash)
 		hr.HashToNode[hash] = ip
 
@@ -62,7 +63,7 @@ func (hr *HashRing) removeNode(ip string) {
 	delete(hr.NodeToHash, ip)
 
 	// Remove virtual nodes from ring
-	newRing := make([]uint32, 0, len(hr.Ring))
+	newRing := make([]uint64, 0, len(hr.Ring))
 	for _, hash := range hr.Ring {
 		if hr.HashToNode[hash] != ip {
 			newRing = append(newRing, hash)
@@ -90,7 +91,7 @@ func (hr *HashRing) getNode(key string) (string, error) {
 		return "", fmt.Errorf("hash ring is empty")
 	}
 
-	hash := crc32.ChecksumIEEE([]byte(key))
+	hash := hasher().sum64([]byte(key))
 
 	// Binary search for the first node with hash >= key hash
 	index := sort.Search(len(hr.Ring), func(i int) bool {
@@ -180,7 +181,13 @@ func (hr *HashRing) Reset() {
 	defer hr.Unlock()
 
 	hr.Nodes = []string{}
-	hr.NodeToHash = make(map[string]uint32)
-	hr.HashToNode = make(map[uint32]string)
-	hr.Ring = []uint32{}
+	hr.NodeToHash = make(map[string]uint64)
+	hr.HashToNode = make(map[uint64]string)
+	hr.Ring = []uint64{}
 }
+
+type hashT struct{}
+
+func (h hashT) sum64(data []byte) uint64 { return xxhash.Sum64(data) }
+
+func hasher() hashT { return hashT{} }
